@@ -112,8 +112,8 @@ app.get("/api/events", async (_req, res, next) => {
 
     app.get("/api/events/qr/:token", async (req, res, next) => {
       try {
-        const event = await prisma.event.findUnique({
-          where: { qrToken: routeParam(req.params.token) },
+        const event = await prisma.event.findFirst({
+          where: { id: routeParam(req.params.token) },
           select: publicEventSelect,
         });
         if (!event) {
@@ -148,7 +148,7 @@ app.post("/api/organizer/events", requireAuth, requireRole("ORGANIZER"), async (
   try {
     const input = eventSchema.parse(req.body);
     const event = await prisma.event.create({
-      data: { ...input, qrToken: crypto.randomBytes(32).toString("hex"), createdById: req.user!.id },
+      data: { ...input, createdById: req.user!.id },
     });
     res.status(201).json({ event });
   } catch (error) {
