@@ -36,6 +36,7 @@ model Event {
   startsAt      DateTime
   endsAt        DateTime
   capacity      Int
+  qrToken       String         @unique @default(uuid())
   createdAt     DateTime       @default(now())
   createdById   String
   createdBy     User           @relation("EventOrganizer", fields: [createdById], references: [id], onDelete: Cascade)

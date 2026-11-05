@@ -79,12 +79,37 @@ const eventSchema = z.object({
     endsAt: z.coerce.date(),
     capacity: z.coerce.number().int().positive().max(100000),
 }).refine((value) => value.endsAt > value.startsAt, { message: "End time must be after start time" });
+const publicEventSelect = {
+    id: true,
+    title: true,
+    description: true,
+    venue: true,
+    startsAt: true,
+    endsAt: true,
+    capacity: true,
+};
 app.get("/api/events", async (_req, res, next) => {
     try {
         const events = await prisma.event.findMany({
             where: { startsAt: { gte: new Date() } },
             orderBy: { startsAt: "asc" },
             include: { _count: { select: { registrations: { where: { status: "REGISTERED" } } } } },
+        });
+        app.get("/api/events/qr/:token", async (req, res, next) => {
+            try {
+                const event = await prisma.event.findUnique({
+                    where: { qrToken: routeParam(req.params.token) },
+                    select: publicEventSelect,
+                });
+                if (!event) {
+                    res.status(404).json({ error: "Event QR code is invalid or expired" });
+                    return;
+                }
+                res.json({ event });
+            }
+            catch (error) {
+                next(error);
+            }
         });
         res.json({ events });
     }
@@ -108,7 +133,9 @@ app.get("/api/organizer/events", requireAuth, requireRole("ORGANIZER"), async (r
 app.post("/api/organizer/events", requireAuth, requireRole("ORGANIZER"), async (req, res, next) => {
     try {
         const input = eventSchema.parse(req.body);
-        const event = await prisma.event.create({ data: { ...input, createdById: req.user.id } });
+        const event = await prisma.event.create({
+            data: { ...input, qrToken: crypto.randomBytes(32).toString("hex"), createdById: req.user.id },
+        });
         res.status(201).json({ event });
     }
     catch (error) {

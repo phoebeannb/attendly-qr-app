@@ -10,6 +10,7 @@ export type Event = {
   startsAt: string;
   endsAt: string;
   capacity: number;
+  qrToken?: string;
   _count?: { registrations: number };
 };
 export type Registration = {

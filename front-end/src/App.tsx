@@ -54,8 +54,8 @@ function AuthPage({ onAuthenticated }: { onAuthenticated: (session: AuthResponse
     } catch (err) { setError(err instanceof Error ? err.message : "Unable to authenticate"); }
   };
   return <div className="auth-page"><div className="auth-card">
-    <div className="eyebrow">EVENTS, WITHOUT THE PAPERWORK</div><h1>Show up.<br /><em>Be counted.</em></h1>
-    <p className="muted">A simple way for campus communities to register, check in, and keep the moment moving.</p>
+    <div className="eyebrow">ATTENDLY</div><h1>Welcome <em>back.</em></h1>
+    <p className="muted">Sign in to discover events and manage your attendance.</p>
     {error && <div className="alert error">{error}</div>}
     <form onSubmit={submit}>
       {registering && <input required placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />}
@@ -68,17 +68,30 @@ function AuthPage({ onAuthenticated }: { onAuthenticated: (session: AuthResponse
   </div></div>;
 }
 
-function EventsPage({ user, onError }: { user: User; onError: (message: string) => void }) {
+function EventsPage({ onError }: { user: User; onError: (message: string) => void }) {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
   useEffect(() => { api<{ events: Event[] }>("/events").then((data) => setEvents(data.events)).catch((err) => onError(err.message)).finally(() => setLoading(false)); }, [onError]);
   const register = async (eventId: string) => {
     try { await api(`/events/${eventId}/register`, { method: "POST" }); setEvents(events.filter((event) => event.id !== eventId)); }
     catch (err) { onError(err instanceof Error ? err.message : "Unable to register"); }
   };
-  return <section><div className="page-heading"><div><div className="eyebrow">WELCOME BACK, {user.name.toUpperCase()}</div><h2>Find your next <em>gathering.</em></h2></div><div className="count-pill">{events.length} upcoming</div></div>
+  const scanEvent = async (decodedText: string) => {
+    const token = decodedText.startsWith("ATTENDLY_EVENT:") ? decodedText.slice("ATTENDLY_EVENT:".length) : decodedText;
+    try {
+      const result = await api<{ event: Event }>(`/events/qr/${encodeURIComponent(token)}`);
+      await register(result.event.id);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Unable to read this event QR code");
+    } finally {
+      setScanning(false);
+    }
+  };
+  return <section><div className="page-heading"><div><div className="eyebrow">EVENTS</div><h2>What’s happening <em>near you?</em></h2></div><div className="heading-actions"><div className="count-pill">{events.length} upcoming</div><button className="secondary" onClick={() => setScanning(!scanning)}>{scanning ? "Close scanner" : "Scan event QR"}</button></div></div>
+    {scanning && <EventScanner onScan={scanEvent} onError={onError} />}
     {loading ? <p className="muted">Loading events...</p> : events.length === 0 ? <EmptyState text="No upcoming events yet. Check back soon." /> :
-      <div className="event-grid">{events.map((event) => <article className="event-card" key={event.id}><div className="event-date">{new Date(event.startsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</div><h3>{event.title}</h3><p>{event.description || "Join us for a great campus event."}</p><div className="event-meta"><span>◷ {new Date(event.startsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><span>⌖ {event.venue}</span></div><button className="primary full" onClick={() => register(event.id)}>Register now <span>→</span></button></article>)}</div>}
+      <div className="event-grid">{events.map((event) => <article className="event-card" key={event.id}><div className="event-date">{formatDate(event.startsAt)}</div><h3>{event.title}</h3><p>{event.description || "Join us for a great campus event."}</p><div className="event-meta"><span>{formatTime(event.startsAt)} – {formatTime(event.endsAt)}</span><span>{event.venue}</span></div><button className="primary full" onClick={() => register(event.id)}>Register now <span>→</span></button></article>)}</div>}
   </section>;
 }
 
@@ -96,8 +109,23 @@ function OrganizerPage({ onError }: { onError: (message: string) => void }) {
   const [selected, setSelected] = useState<Event | null>(null);
   const load = () => api<{ events: Event[] }>("/organizer/events").then((data) => setEvents(data.events)).catch((err) => onError(err.message));
   useEffect(() => { load(); }, []);
-  const create = async (event: FormEvent) => { event.preventDefault(); try { await api("/organizer/events", { method: "POST", body: JSON.stringify({ ...form, capacity: Number(form.capacity) }) }); setForm({ title: "", description: "", venue: "", startsAt: "", endsAt: "", capacity: "100" }); load(); } catch (err) { onError(err instanceof Error ? err.message : "Unable to create event"); } };
-  return <section><div className="page-heading"><div><div className="eyebrow">ORGANIZER STUDIO</div><h2>Make it <em>happen.</em></h2></div></div><div className="studio-grid"><form className="panel" onSubmit={create}><h3>Create an event</h3><input required placeholder="Event title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /><textarea placeholder="Description (optional)" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /><input required placeholder="Venue" value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /><div className="two-col"><label>Starts<input required type="datetime-local" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} /></label><label>Ends<input required type="datetime-local" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} /></label></div><label>Capacity<input required type="number" min="1" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></label><button className="primary" type="submit">Publish event <span>→</span></button></form><div className="panel"><h3>Your events</h3>{events.length === 0 ? <EmptyState text="Your published events will appear here." /> : events.map((event) => <button className="event-row" key={event.id} onClick={() => setSelected(event)}><span><strong>{event.title}</strong><small>{new Date(event.startsAt).toLocaleString()}</small></span><span>{event._count?.registrations ?? 0}/{event.capacity} registered →</span></button>)}{selected && <Attendance event={selected} onError={onError} />}</div></div></section>;
+  const create = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      await api("/organizer/events", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          startsAt: toIsoDateTime(form.startsAt),
+          endsAt: toIsoDateTime(form.endsAt),
+          capacity: Number(form.capacity),
+        }),
+      });
+      setForm({ title: "", description: "", venue: "", startsAt: "", endsAt: "", capacity: "100" });
+      load();
+    } catch (err) { onError(err instanceof Error ? err.message : "Unable to create event"); }
+  };
+  return <section><div className="page-heading"><div><div className="eyebrow">ORGANIZER</div><h2>Manage your <em>events.</em></h2></div></div><div className="studio-grid"><form className="panel" onSubmit={create}><h3>Create an event</h3><input required placeholder="Event title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /><textarea placeholder="Description (optional)" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /><input required placeholder="Venue" value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /><div className="two-col"><label>Starts<input required type="datetime-local" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} /></label><label>Ends<input required type="datetime-local" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} /></label></div><label>Capacity<input required type="number" min="1" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></label><button className="primary" type="submit">Create event <span>→</span></button></form><div className="panel"><h3>Your events</h3>{events.length === 0 ? <EmptyState text="Your published events will appear here." /> : events.map((event) => <button className="event-row" key={event.id} onClick={() => setSelected(event)}><span><strong>{event.title}</strong><small>{formatDateTime(event.startsAt)} – {formatTime(event.endsAt)}</small></span><span>{event._count?.registrations ?? 0}/{event.capacity} registered →</span></button>)}{selected && <><EventQr event={selected} /><Attendance event={selected} onError={onError} /></>}</div></div></section>;
 }
 
 function Attendance({ event, onError }: { event: Event; onError: (message: string) => void }) {
@@ -110,6 +138,39 @@ function Attendance({ event, onError }: { event: Event; onError: (message: strin
   }, [scanning]);
   const checkIn = async (e: FormEvent) => { e.preventDefault(); try { const result = await api<{ message: string; attendee: { name: string } }>("/check-in", { method: "POST", body: JSON.stringify({ token, eventId: event.id }) }); setMessage(`${result.attendee.name} checked in.`); setToken(""); } catch (err) { onError(err instanceof Error ? err.message : "Check-in failed"); } };
   return <div className="attendance"><h4>Quick check-in</h4>{scanning && <div id="qr-reader" className="scanner" />}<form onSubmit={checkIn}><input required minLength={32} placeholder="Paste scanned QR token" value={token} onChange={(e) => setToken(e.target.value)} /><button className="secondary" type="button" onClick={() => setScanning(!scanning)}>{scanning ? "Stop camera" : "Scan with camera"}</button><button className="primary" type="submit">Check in</button></form>{message && <div className="alert success">{message}</div>}<p className="muted small">Allow camera access to scan a student QR pass, or paste its token for testing.</p></div>;
+}
+
+function EventQr({ event }: { event: Event }) {
+  const [image, setImage] = useState("");
+  useEffect(() => {
+    if (event.qrToken) void QRCode.toDataURL(`ATTENDLY_EVENT:${event.qrToken}`, { width: 240, margin: 2 }).then(setImage);
+  }, [event.qrToken]);
+  return <div className="event-qr"><div><div className="eyebrow">EVENT QR CODE</div><h4>Students scan to register</h4><p className="muted small">Display this code at the venue or add it to your event post.</p></div>{image && <img src={image} alt={`Registration QR code for ${event.title}`} />}</div>;
+}
+
+function EventScanner({ onScan, onError }: { onScan: (value: string) => void; onError: (message: string) => void }) {
+  useEffect(() => {
+    const scanner = new Html5QrcodeScanner("event-qr-reader", { fps: 10, qrbox: { width: 220, height: 220 } }, false);
+    scanner.render((decodedText) => { void scanner.clear(); onScan(decodedText); }, () => {});
+    return () => { void scanner.clear().catch((error: unknown) => { onError(error instanceof Error ? error.message : "Unable to stop QR scanner"); }); };
+  }, [onScan, onError]);
+  return <div className="event-scanner"><div id="event-qr-reader" /></div>;
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatDateTime(value: string) {
+  return `${formatDate(value)} · ${formatTime(value)}`;
+}
+
+function toIsoDateTime(value: string) {
+  return new Date(value).toISOString();
 }
 
 function EmptyState({ text }: { text: string }) { return <div className="empty"><span>✦</span><p>{text}</p></div>; }
