@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  ORGANIZER
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  CANCELLED
+}
+
+model User {
+  id           String         @id @default(uuid())
+  name         String
+  email        String         @unique
+  passwordHash String
+  role         Role           @default(STUDENT)
+  createdAt    DateTime       @default(now())
+  events       Event[]        @relation("EventOrganizer")
+  registrations Registration[]
+}
+
+model Event {
+  id            String         @id @default(uuid())
+  title         String
+  description   String?
+  venue         String
+  startsAt      DateTime
+  endsAt        DateTime
+  capacity      Int
+  createdAt     DateTime       @default(now())
+  createdById   String
+  createdBy     User           @relation("EventOrganizer", fields: [createdById], references: [id], onDelete: Cascade)
+  registrations Registration[]
+
+  @@index([startsAt])
+  @@index([createdById])
+}
+
+model Registration {
+  id          String             @id @default(uuid())
+  userId      String
+  eventId     String
+  qrToken     String             @unique
+  status      RegistrationStatus @default(REGISTERED)
+  createdAt   DateTime           @default(now())
+  checkedInAt DateTime?
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event       Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([eventId, status])
+}

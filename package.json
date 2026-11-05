@@ -1,0 +1,19 @@
+{
+  "name": "attendly-qr-app",
+  "version": "1.0.0",
+  "description": "QR-based event attendance system for student organizations.",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n back,front -c blue,green \"npm run dev --prefix back-end\" \"npm run dev --prefix front-end\"",
+    "install:all": "npm install && npm install --prefix back-end && npm install --prefix front-end",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phoebeannb/attendly-qr-app.git"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}
